@@ -1,0 +1,89 @@
+---
+title: "Project_STA312"
+author: "Mohammad Fahim Uddin Alvi"
+date: "2024-11-23"
+output: officedown::rdocx_document
+    
+---
+# Libraries
+library(tidyverse)
+library(rvest)
+library(readxl)
+library(janitor)
+library(officer)
+library(flextable)
+library(dplyr)
+
+# Load data
+state_hpi <- readr::read_csv("https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2019/2019-02-05/state_hpi.csv")
+mortgage_rates <- readr::read_csv("https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2019/2019-02-05/mortgage.csv")
+recession_dates <- readr::read_csv("https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2019/2019-02-05/recessions.csv")
+
+#Clean HPI
+df <- read_excel("C:/Not C/UTM/STA312/Project/State_and_US_SA.xls", skip = 5) %>% 
+  separate(Month, c("year", "month"), sep = "M") %>% 
+  mutate_at(vars(year, month), as.integer) %>% 
+  filter(!is.na(year)) %>%
+  gather(state, price_index, AK:WY) %>% 
+  rename(us_avg = `United States seasonally adjusted`) %>% 
+  select(year, month, state, price_index, us_avg) %>% 
+  mutate(price_index = as.numeric(price_index))
+  
+head(df)
+  
+         
+flextable(head(df))
+
+# Fit the regression model
+model <- lm(price_index ~ year + month + us_avg, data = df)
+
+# Display the model summary
+summary(model)
+
+# Residuals vs. Fitted Plot
+plot(model, which = 1, main = "Residuals vs Fitted")
+
+# Add predictions to the dataframe
+df$predicted_price <- predict(model)
+
+# Predicted vs. Actual Plot
+library(ggplot2)
+ggplot(df, aes(x = predicted_price, y = price_index)) +
+  geom_point(color = "blue", alpha = 0.7) +
+  geom_abline(slope = 1, intercept = 0, color = "red", linetype = "dashed", linewidth = 1.2) +
+  labs(title = "Predicted vs. Actual Values",
+       x = "Predicted Price Index",
+       y = "Actual Price Index")
+
+
+model_non_linear <- lm(price_index ~ year + month + us_avg + I(us_avg^2), data = df)
+summary(model_non_linear)
+
+
+df$log_price_index <- log(df$price_index)
+model_log <- lm(log_price_index ~ year + month + us_avg, data = df)
+summary(model_log)
+
+model_interaction <- lm(price_index ~ year * us_avg + month, data = df)
+summary(model_interaction)
+
+AIC(model, model_log,model_non_linear,model_interaction)
+
+plot(model_log, which = 1)  # Residuals vs. Fitted
+plot(model_log, which = 2)  # Q-Q Plot
+
+df$above_avg <- ifelse(df$price_index > df$us_avg, 1, 0)
+
+table(df$above_avg)
+
+# Fit the binary logistic regression model
+logit_model <- glm(above_avg ~ year + month + us_avg, data = df, family = binomial)
+
+summary(logit_model)
+
+# Fit the null model (intercept only)
+null_model <- glm(above_avg ~ 1, family = binomial, data = df)
+
+# Compare the null model with the full model
+anova(null_model, logit_model, test = "LRT")
+
